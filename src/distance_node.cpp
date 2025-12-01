@@ -7,71 +7,136 @@
 
 #include <cmath>
 #include <chrono>
+#include <memory>
+#include <string>
+#include <functional>
 
+// -------------------------
+// Standard Library aliases
+// -------------------------
+using std::string;
+using std::bind;
 using std::placeholders::_1;
+using std::sqrt;
+using std::chrono::milliseconds;
 
-// ONLY FOR VERSION COLOR
-static const std::string Y = "\033[33m";  // yellow
-static const std::string R = "\033[0m";   // reset
 
-class DistanceNode : public rclcpp::Node
+// -------------------------
+// ROS2 Type Aliases
+// -------------------------
+using rclcpp::Node;
+using rclcpp::sleep_for;
+using rclcpp::init;
+using rclcpp::spin;
+using rclcpp::shutdown;
+
+// -------------------------
+// Generic Aliases
+// -------------------------
+template<typename T>
+using Sub = rclcpp::Subscription<T>;
+
+template<typename T>
+using Pub = rclcpp::Publisher<T>;
+
+using Timer = rclcpp::TimerBase;
+
+using Pose           = turtlesim::msg::Pose;
+using Twist          = geometry_msgs::msg::Twist;
+using BoolMsg        = std_msgs::msg::Bool;
+
+using SetPenSrv      = turtlesim::srv::SetPen;
+using TeleportSrv    = turtlesim::srv::TeleportAbsolute;
+
+using ClientSetPen   = rclcpp::Client<SetPenSrv>;
+using ClientTeleport = rclcpp::Client<TeleportSrv>;
+
+using SetPenReq      = SetPenSrv::Request;
+using TeleportReq    = TeleportSrv::Request;
+
+// -------------------------
+// ANSI Colors
+// -------------------------
+static const string Y = "\033[33m";
+static const string R = "\033[0m";
+
+
+// =====================================================
+// CLASS NODE
+// =====================================================
+class DistanceNode : public Node
 {
 public:
     DistanceNode() : Node("distance_node")
     {
-        // VERSION (ONLY CHANGE)
-        RCLCPP_INFO(this->get_logger(),
-                    "%sdistance_node v4.3 loaded%s",
-                    Y.c_str(), R.c_str());
+        RCLCPP_INFO(
+            this->get_logger(),
+            "%sdistance_node v4.3 loaded%s",
+            Y.c_str(), R.c_str()
+        );
 
+        // -------------------------
         // Subscribers
-        sub1_ = create_subscription<turtlesim::msg::Pose>(
-            "/turtle1/pose", 10, std::bind(&DistanceNode::pose1Callback, this, _1));
+        // -------------------------
+        sub1_ = create_subscription<Pose>(
+            "/turtle1/pose", 10,
+            bind(&DistanceNode::pose1Callback, this, _1)
+        );
 
-        sub2_ = create_subscription<turtlesim::msg::Pose>(
-            "/turtle2/pose", 10, std::bind(&DistanceNode::pose2Callback, this, _1));
+        sub2_ = create_subscription<Pose>(
+            "/turtle2/pose", 10,
+            bind(&DistanceNode::pose2Callback, this, _1)
+        );
 
+        // -------------------------
         // Publishers
-        pub1_ = create_publisher<geometry_msgs::msg::Twist>("/turtle1/cmd_vel", 10);
-        pub2_ = create_publisher<geometry_msgs::msg::Twist>("/turtle2/cmd_vel", 10);
+        // -------------------------
+        pub1_ = create_publisher<Twist>("/turtle1/cmd_vel", 10);
+        pub2_ = create_publisher<Twist>("/turtle2/cmd_vel", 10);
 
-        // Freeze publisher
-        freeze_pub_ = create_publisher<std_msgs::msg::Bool>("/freeze_turtles", 10);
+        freeze_pub_ = create_publisher<BoolMsg>("/freeze_turtles", 10);
 
-        // Service clients
-        pen1_client_ = create_client<turtlesim::srv::SetPen>("/turtle1/set_pen");
-        pen2_client_ = create_client<turtlesim::srv::SetPen>("/turtle2/set_pen");
-        tp1_client_  = create_client<turtlesim::srv::TeleportAbsolute>("/turtle1/teleport_absolute");
-        tp2_client_  = create_client<turtlesim::srv::TeleportAbsolute>("/turtle2/teleport_absolute");
+        // -------------------------
+        // Service Clients
+        // -------------------------
+        pen1_client_ = create_client<SetPenSrv>("/turtle1/set_pen");
+        pen2_client_ = create_client<SetPenSrv>("/turtle2/set_pen");
+        tp1_client_  = create_client<TeleportSrv>("/turtle1/teleport_absolute");
+        tp2_client_  = create_client<TeleportSrv>("/turtle2/teleport_absolute");
 
+        // -------------------------
+        // Timer
+        // -------------------------
         timer_ = create_wall_timer(
-            std::chrono::milliseconds(50),
-            std::bind(&DistanceNode::update, this)
+            milliseconds(50),
+            bind(&DistanceNode::update, this)
         );
     }
 
 private:
 
-    //------------------------------
-    //  FREEZE CONTROL
-    //------------------------------
+    // =====================================================
+    // FREEZE CONTROL
+    // =====================================================
     void setFreeze(bool state)
     {
-        std_msgs::msg::Bool msg;
+        BoolMsg msg;
         msg.data = state;
         freeze_pub_->publish(msg);
     }
 
-    //------------------------------
-    //  UTILITIES
-    //------------------------------
-    void setPen(rclcpp::Client<turtlesim::srv::SetPen>::SharedPtr client,
-                int r, int g, int b, int width, bool off)
+
+    // =====================================================
+    // UTILITIES
+    // =====================================================
+    void setPen(const ClientSetPen::SharedPtr &client,
+                int r, int g, int b,
+                int width, bool off)
     {
-        if (!client->wait_for_service(std::chrono::milliseconds(100)))
+        if (!client->wait_for_service(milliseconds(100)))
             return;
 
-        auto req = std::make_shared<turtlesim::srv::SetPen::Request>();
+        auto req = std::make_shared<SetPenReq>();
         req->r = r;
         req->g = g;
         req->b = b;
@@ -81,13 +146,13 @@ private:
         client->async_send_request(req);
     }
 
-    void teleport(rclcpp::Client<turtlesim::srv::TeleportAbsolute>::SharedPtr client,
-                  const turtlesim::msg::Pose &p)
+    void teleport(const ClientTeleport::SharedPtr &client,
+                  const Pose &p)
     {
-        if (!client->wait_for_service(std::chrono::milliseconds(100)))
+        if (!client->wait_for_service(milliseconds(100)))
             return;
 
-        auto req = std::make_shared<turtlesim::srv::TeleportAbsolute::Request>();
+        auto req = std::make_shared<TeleportReq>();
         req->x = p.x;
         req->y = p.y;
         req->theta = p.theta;
@@ -95,26 +160,29 @@ private:
         client->async_send_request(req);
     }
 
-    void stopTurtle(rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr pub)
+    void stopTurtle(const Pub<Twist>::SharedPtr &pub)
     {
-        geometry_msgs::msg::Twist stop;
-        stop.linear.x = 0;
-        stop.angular.z = 0;
-        pub->publish(stop);
+        Twist msg;
+        msg.linear.x = 0;
+        msg.angular.z = 0;
+        pub->publish(msg);
     }
 
-    bool isNearWall(const turtlesim::msg::Pose &p)
+    bool isNearWall(const Pose &p)
     {
-        return (p.x < 1.5 || p.x > 9.5 || p.y < 1.5 || p.y > 9.5);
+        return (p.x < 1.5 || p.x > 9.5 ||
+                p.y < 1.5 || p.y > 9.5);
     }
 
-    //------------------------------
-    // POSE CALLBACKS
-    //------------------------------
-    void pose1Callback(const turtlesim::msg::Pose &p)
+
+    // =====================================================
+    // CALLBACKS
+    // =====================================================
+    void pose1Callback(const Pose &p)
     {
         pose1_ = p;
         pose1_ready_ = true;
+
         if (!init1_) {
             last_stop1_ = p;
             init1_ = true;
@@ -122,10 +190,11 @@ private:
         }
     }
 
-    void pose2Callback(const turtlesim::msg::Pose &p)
+    void pose2Callback(const Pose &p)
     {
         pose2_ = p;
         pose2_ready_ = true;
+
         if (!init2_) {
             last_stop2_ = p;
             init2_ = true;
@@ -133,26 +202,30 @@ private:
         }
     }
 
-    //------------------------------
+
+    // =====================================================
     // MAIN LOOP
-    //------------------------------
+    // =====================================================
     void update()
     {
         if (!pose1_ready_ || !pose2_ready_)
             return;
 
-        // Save last stop
+        // Save stop positions
         if (pose1_.linear_velocity == 0 && pose1_.angular_velocity == 0)
             last_stop1_ = pose1_;
+
         if (pose2_.linear_velocity == 0 && pose2_.angular_velocity == 0)
             last_stop2_ = pose2_;
 
-        //-----------------------------------------------------
-        //  COLLISION TURTLE–TURTLE
-        //-----------------------------------------------------
+
+        // -------------------------
+        // Turtle–turtle collision
+        // -------------------------
         float dx = pose1_.x - pose2_.x;
         float dy = pose1_.y - pose2_.y;
-        if (std::sqrt(dx*dx + dy*dy) < 1.5)
+
+        if (sqrt(dx * dx + dy * dy) < 1.5)
         {
             RCLCPP_ERROR(this->get_logger(), "[COLLISION] turtles");
 
@@ -162,7 +235,8 @@ private:
 
             setPen(pen1_client_, 255, 0, 0, 3, false);
             setPen(pen2_client_, 255, 0, 0, 3, false);
-            rclcpp::sleep_for(std::chrono::milliseconds(400));
+
+            sleep_for(milliseconds(400));
 
             setPen(pen1_client_, 0, 0, 0, 3, true);
             setPen(pen2_client_, 0, 0, 0, 3, true);
@@ -183,9 +257,10 @@ private:
             return;
         }
 
-        //-----------------------------------------------------
-        //  WALL COLLISION TURTLE 1
-        //-----------------------------------------------------
+
+        // -------------------------
+        // Wall collision (turtle1)
+        // -------------------------
         if (isNearWall(pose1_))
         {
             RCLCPP_ERROR(this->get_logger(), "[COLLISION] turtle1 wall");
@@ -194,7 +269,7 @@ private:
             stopTurtle(pub1_);
 
             setPen(pen1_client_, 255, 0, 0, 3, false);
-            rclcpp::sleep_for(std::chrono::milliseconds(400));
+            sleep_for(milliseconds(400));
 
             setPen(pen1_client_, 0, 0, 0, 3, true);
             teleport(tp1_client_, last_stop1_);
@@ -207,9 +282,10 @@ private:
             return;
         }
 
-        //-----------------------------------------------------
-        //  WALL COLLISION TURTLE 2
-        //-----------------------------------------------------
+
+        // -------------------------
+        // Wall collision (turtle2)
+        // -------------------------
         if (isNearWall(pose2_))
         {
             RCLCPP_ERROR(this->get_logger(), "[COLLISION] turtle2 wall");
@@ -218,7 +294,7 @@ private:
             stopTurtle(pub2_);
 
             setPen(pen2_client_, 255, 0, 0, 3, false);
-            rclcpp::sleep_for(std::chrono::milliseconds(400));
+            sleep_for(milliseconds(400));
 
             setPen(pen2_client_, 0, 0, 0, 3, true);
             teleport(tp2_client_, last_stop2_);
@@ -232,38 +308,43 @@ private:
         }
     }
 
-    //------------------------------
-    // VARIABLES
-    //------------------------------
-    turtlesim::msg::Pose pose1_, pose2_;
-    turtlesim::msg::Pose last_stop1_, last_stop2_;
-
+    // =====================================================
+    // MEMBER VARIABLES
+    // =====================================================
+    Pose pose1_, pose2_;
+    Pose last_stop1_, last_stop2_;
+    
     bool pose1_ready_ = false;
     bool pose2_ready_ = false;
     bool init1_ = false;
     bool init2_ = false;
-
-    rclcpp::Subscription<turtlesim::msg::Pose>::SharedPtr sub1_;
-    rclcpp::Subscription<turtlesim::msg::Pose>::SharedPtr sub2_;
-    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr pub1_;
-    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr pub2_;
-
-    rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr freeze_pub_;
-
-    rclcpp::Client<turtlesim::srv::SetPen>::SharedPtr pen1_client_;
-    rclcpp::Client<turtlesim::srv::SetPen>::SharedPtr pen2_client_;
-
-    rclcpp::Client<turtlesim::srv::TeleportAbsolute>::SharedPtr tp1_client_;
-    rclcpp::Client<turtlesim::srv::TeleportAbsolute>::SharedPtr tp2_client_;
-
-    rclcpp::TimerBase::SharedPtr timer_;
+    
+    // Subscribers
+    Sub<Pose>::SharedPtr sub1_;
+    Sub<Pose>::SharedPtr sub2_;
+    
+    // Publishers
+    Pub<Twist>::SharedPtr    pub1_;
+    Pub<Twist>::SharedPtr    pub2_;
+    Pub<BoolMsg>::SharedPtr  freeze_pub_;
+    
+    // Service clients
+    ClientSetPen::SharedPtr    pen1_client_;
+    ClientSetPen::SharedPtr    pen2_client_;
+    ClientTeleport::SharedPtr  tp1_client_;
+    ClientTeleport::SharedPtr  tp2_client_;
+    
+    // Timer
+    Timer::SharedPtr timer_;
 };
 
-
+// =====================================================
+// MAIN
+// =====================================================
 int main(int argc, char **argv)
 {
-    rclcpp::init(argc, argv);
-    rclcpp::spin(std::make_shared<DistanceNode>());
-    rclcpp::shutdown();
+    init(argc, argv);
+    spin(std::make_shared<DistanceNode>());
+    shutdown();
     return 0;
 }

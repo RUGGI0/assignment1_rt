@@ -40,6 +40,7 @@ while true; do
     echo "                                  Q = Quit"
     echo ""        
     echo "                            =============================="
+    echo -e "${C2}                                             [C++ Version]${RESET}"
 
     read -n1 -s KEY
 

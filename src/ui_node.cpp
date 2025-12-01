@@ -1,140 +1,196 @@
+
 #include <rclcpp/rclcpp.hpp>
 #include <geometry_msgs/msg/twist.hpp>
 #include <std_msgs/msg/bool.hpp>
+
 #include <iostream>
+#include <string>
 #include <chrono>
 
-using namespace std::chrono_literals;
+// =====================================================
+// STANDARD LIBRARY ALIASES
+// =====================================================
+using std::string;
+using std::cin;
+using std::cout;
+using std::chrono::milliseconds;
 
-static const std::string Y = "\033[33m";   // Yellow
-static const std::string R = "\033[0m";    // Reset
+// =====================================================
+// ROS2 TYPE ALIASES
+// =====================================================
+using rclcpp::Node;
+using rclcpp::Duration;
+using rclcpp::Publisher;
+using rclcpp::Subscription;
+using rclcpp::TimerBase;
+using rclcpp::init;
+using rclcpp::spin;
+using rclcpp::shutdown;
 
-class UINode : public rclcpp::Node
+using Twist   = geometry_msgs::msg::Twist;
+using BoolMsg = std_msgs::msg::Bool;
+
+template<typename T>
+using Pub = Publisher<T>;
+
+template<typename T>
+using Sub = Subscription<T>;
+
+using Timer = TimerBase;
+
+
+// =====================================================
+// ANSI COLORS
+// =====================================================
+static const string Y = "\033[33m";
+static const string R = "\033[0m";
+
+
+// =====================================================
+// UI NODE
+// =====================================================
+class UINode : public Node
 {
 public:
     UINode() : Node("ui_node")
     {
-        // =============================
-        // VERSION PRINT (ONLY ADDITION)
-        // =============================
-        RCLCPP_INFO(this->get_logger(), "%sui_node v3.2 loaded%s",
-                    Y.c_str(), R.c_str());
-        // =============================
+        RCLCPP_INFO(
+            this->get_logger(),
+            "%sui_node v3.3 loaded%s",
+            Y.c_str(), R.c_str()
+        );
 
-        pub1_ = this->create_publisher<geometry_msgs::msg::Twist>("/turtle1/cmd_vel", 10);
-        pub2_ = this->create_publisher<geometry_msgs::msg::Twist>("/turtle2/cmd_vel", 10);
+        pub1_ = create_publisher<Twist>("/turtle1/cmd_vel", 10);
+        pub2_ = create_publisher<Twist>("/turtle2/cmd_vel", 10);
 
-        freeze_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+        freeze_sub_ = create_subscription<BoolMsg>(
             "/freeze_turtles", 10,
-            std::bind(&UINode::freezeCallback, this, std::placeholders::_1));
+            [this](const BoolMsg &msg) { onFreeze(msg); }
+        );
 
-        timer_ = this->create_wall_timer(
-            std::chrono::milliseconds(100),
-            std::bind(&UINode::loop, this));
-
-        freeze_ = false;
+        timer_ = create_wall_timer(
+            milliseconds(100),
+            [this]() { loop(); }
+        );
     }
 
+
 private:
-    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr pub1_, pub2_;
-    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr freeze_sub_;
-    rclcpp::TimerBase::SharedPtr timer_;
 
-    bool waiting_input_ = true;
-    bool freeze_;
-    geometry_msgs::msg::Twist cmd_;
-    rclcpp::Time start_time_;
-    int selected_turtle_ = 1;
-
-    //---------------------------------------------------------
-    // FREEZE
-    //---------------------------------------------------------
-    void freezeCallback(const std_msgs::msg::Bool &msg)
+    // =====================================================
+    // FREEZE CALLBACK
+    // =====================================================
+    void onFreeze(const BoolMsg &msg)
     {
         freeze_ = msg.data;
 
         if (freeze_)
         {
-            publish_cmd(geometry_msgs::msg::Twist());
+            publish(Twist{});
             waiting_input_ = true;
-            std::cout << Y << "\n[UI] INPUT BLOCKED BY COLLISION\n" << R;
+            cout << Y << "\n[UI] INPUT BLOCKED BY COLLISION\n" << R;
         }
         else
         {
-            std::cout << Y << "\n[UI] INPUT UNBLOCKED\n" << R;
+            cout << Y << "\n[UI] INPUT UNBLOCKED\n" << R;
         }
     }
 
-    //---------------------------------------------------------
+
+    // =====================================================
     // MAIN LOOP
-    //---------------------------------------------------------
+    // =====================================================
     void loop()
     {
         if (freeze_)
         {
-            publish_cmd(geometry_msgs::msg::Twist());
+            publish(Twist{});
             return;
         }
 
         if (waiting_input_)
         {
-            get_user_input();
+            getUserInput();
             waiting_input_ = false;
             start_time_ = now();
         }
         else
         {
-            if ((now() - start_time_) < rclcpp::Duration(1s)) {
-                publish_cmd(cmd_);
-            } else {
-                publish_cmd(geometry_msgs::msg::Twist());
+            if ((now() - start_time_) < Duration::from_seconds(1))
+            {
+                publish(cmd_);
+            }
+            else
+            {
+                publish(Twist{});
                 waiting_input_ = true;
-                std::cout << Y << "\nCommand completed. Ready for next.\n" << R;
+                cout << Y << "\nCommand completed. Ready for next.\n" << R;
             }
         }
     }
 
-    //---------------------------------------------------------
-    // PUBLISH
-    //---------------------------------------------------------
-    void publish_cmd(const geometry_msgs::msg::Twist &msg)
-    {
-        if (freeze_)
-            return;
 
+    // =====================================================
+    // PUBLISH
+    // =====================================================
+    void publish(const Twist &msg)
+    {
         if (selected_turtle_ == 1)
             pub1_->publish(msg);
         else
             pub2_->publish(msg);
     }
 
-    //---------------------------------------------------------
-    // USER INPUT (YELLOW)
-    //---------------------------------------------------------
-    void get_user_input()
-    {
-        std::cout << Y << "\nSelect turtle to control (1 or 2): " << R;
-        std::cin >> selected_turtle_;
 
-        if (selected_turtle_ != 1 && selected_turtle_ != 2) {
+    // =====================================================
+    // USER INPUT
+    // =====================================================
+    void getUserInput()
+    {
+        cout << Y << "\nSelect turtle to control (1 or 2): " << R;
+        cin >> selected_turtle_;
+
+        if (selected_turtle_ != 1 && selected_turtle_ != 2)
+        {
             selected_turtle_ = 1;
-            std::cout << Y << "Invalid input, default = turtle1\n" << R;
+            cout << Y << "Invalid input, default = turtle1\n" << R;
         }
 
-        std::cout << Y << "Linear velocity: " << R;
-        std::cin >> cmd_.linear.x;
+        cout << Y << "Linear velocity: " << R;
+        cin >> cmd_.linear.x;
 
-        std::cout << Y << "Angular velocity: " << R;
-        std::cin >> cmd_.angular.z;
+        cout << Y << "Angular velocity: " << R;
+        cin >> cmd_.angular.z;
 
-        std::cout << Y << "Sending command for 1 second...\n" << R;
+        cout << Y << "Sending command for 1 second...\n" << R;
     }
+
+
+    // =====================================================
+    // MEMBER VARIABLES
+    // =====================================================
+    Pub<Twist>::SharedPtr    pub1_;
+    Pub<Twist>::SharedPtr    pub2_;
+    Sub<BoolMsg>::SharedPtr  freeze_sub_;
+    Timer::SharedPtr         timer_;
+
+    bool waiting_input_ = true;
+    bool freeze_ = false;
+
+    Twist cmd_;
+    rclcpp::Time start_time_;
+
+    int selected_turtle_ = 1;
 };
 
+
+// =====================================================
+// MAIN
+// =====================================================
 int main(int argc, char **argv)
 {
-    rclcpp::init(argc, argv);
-    rclcpp::spin(std::make_shared<UINode>());
-    rclcpp::shutdown();
+    init(argc, argv);
+    spin(std::make_shared<UINode>());
+    shutdown();
     return 0;
 }
