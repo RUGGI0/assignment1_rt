@@ -170,8 +170,8 @@ private:
 
     bool isNearWall(const Pose &p)
     {
-        return (p.x < 1.5 || p.x > 9.5 ||
-                p.y < 1.5 || p.y > 9.5);
+        return (p.x < 1.0 || p.x > 9.5 ||
+                p.y < 1.0 || p.y > 9.5);
     }
 
 
@@ -225,7 +225,7 @@ private:
         float dx = pose1_.x - pose2_.x;
         float dy = pose1_.y - pose2_.y;
 
-        if (sqrt(dx * dx + dy * dy) < 1.5)
+        if (sqrt(dx * dx + dy * dy) < 1.0)
         {
             RCLCPP_ERROR(this->get_logger(), "[COLLISION] turtles");
 
