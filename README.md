@@ -153,10 +153,9 @@ ros2 run assignment1_rt ui_node
 
 Two shell scripts are included to automate execution.
 
-### 8.1 `launcher.sh` — Main Entry Point
+### 8.1 `launcher.sh`
 
 `launcher.sh` provides:
-
 - An interactive ASCII-based menu  
 - Options to start, restart, cancel, or quit  
 - Automatic invocation of `run_assignment.sh`  
@@ -168,11 +167,11 @@ chmod +x launcher.sh
 ./launcher.sh
 ```
 
-### 8.2 `run_assignment.sh` — Backend Execution Layer
+### 8.2 `run_assignment.sh`
 
 Automatically invoked by `launcher.sh`.  
-It:
 
+It:
 - Creates a `tmux` session  
 - Builds a 2×2 tiled layout  
 - Launches:  
