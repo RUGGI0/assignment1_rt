@@ -1,16 +1,18 @@
 # ROS2 Assignment: Multi-Turtle Control and Collision Management
 
-This project implements a coordinated control system for two Turtlesim agents in ROS2.
+This project implements a coordinated control system for two Turtlesim agents in ROS2.  
 The system is composed of two custom nodes:
 
-1. `distance_node`: Supervisory logic responsible for collision detection, freeze control, teleportation, and pen management.
+1. `distance_node`: Supervisory logic responsible for collision detection, freeze control, teleportation, and pen management.  
 2. `ui_node`: Command-line user interface for velocity input and manual turtle control.
 
-Both nodes communicate through topics and services to ensure safe navigation and consistent behaviour in the presence of collisions.
+Both nodes communicate through topics and services to ensure safe navigation and consistent behavior during collisions.
+
+---
 
 ## 1. System Architecture
 
-The ASCII diagram below represents nodes, topics, services, and data flow.
+The ASCII diagram below represents nodes, topics, services, and data flow:
 
 ```
                            +---------------------------+
@@ -43,7 +45,7 @@ The ASCII diagram below represents nodes, topics, services, and data flow.
                      |  turtle1 Pen/TP  |   | turtle2 Pen/TP   |
                      +------------------+   +------------------+
 
-                    distance_node publishes /freeze_turtles topic
+                    distance_node publishes /freeze_turtles
                                    |
                                    v
                            +----------------+
@@ -52,73 +54,83 @@ The ASCII diagram below represents nodes, topics, services, and data flow.
                            +----------------+
 ```
 
+---
+
 ## 2. Node Descriptions
 
-### 2.1 distance_node
+### 2.1 `distance_node`
 
-The `distance_node` acts as the supervisory control unit. It performs:
+`distance_node` functions as the supervisory controller. It performs:
 
 - Subscription to `/turtle1/pose` and `/turtle2/pose`
-- Detection of turtle–turtle and turtle–wall collisions
-- publication of `/freeze_turtles` to temporarily disable UI input
-- Automatic pen color change during collisions
-- Teleportation back to the last safe pose
+- Turtle–turtle and turtle–wall collision detection
+- Publication of `/freeze_turtles` to temporarily block UI input
+- Automatic pen color switching on collisions
+- Teleportation to the last safe pose
 - Management of SetPen and Teleport service clients
-- Timer-driven update loop running every 50 ms
-- ANSI-colored version output at startup
+- Timer-driven update loop running at 20 Hz
+- ANSI-colored initialization message
 
-### 2.2 ui_node
+---
 
-The `ui_node` provides a synchronous terminal-based input system. It handles:
+### 2.2 `ui_node`
 
-- Selection of turtle 1 or turtle 2
-- Input of linear and angular velocities
-- Execution of commands for a fixed duration of 1 second
-- Freezing behaviour via `/freeze_turtles`
-- ANSI-colored user prompts and notices
-- Publishing commands to `/turtle1/cmd_vel` and `/turtle2/cmd_vel`
+`ui_node` provides a synchronous terminal-based interface. It handles:
+
+- Selection between turtle1 and turtle2  
+- Input of linear and angular velocities  
+- Execution of commands for exactly 1 second  
+- Freeze behavior governed by `/freeze_turtles`  
+- ANSI-colored user prompts and system messages  
+
+---
 
 ## 3. Topics
 
 ### Publishers
-- `/turtle1/cmd_vel` (`geometry_msgs/msg/Twist`)
-- `/turtle2/cmd_vel` (`geometry_msgs/msg/Twist`)
-- `/freeze_turtles` (`std_msgs/msg/Bool`)
+- `/turtle1/cmd_vel` — `geometry_msgs/msg/Twist`
+- `/turtle2/cmd_vel` — `geometry_msgs/msg/Twist`
+- `/freeze_turtles` — `std_msgs/msg/Bool`
 
 ### Subscribers
-- `/turtle1/pose` (`turtlesim/msg/Pose`)
-- `/turtle2/pose` (`turtlesim/msg/Pose`)
-- `/freeze_turtles` (`std_msgs/msg/Bool`)
+- `/turtle1/pose` — `turtlesim/msg/Pose`
+- `/turtle2/pose` — `turtlesim/msg/Pose`
+- `/freeze_turtles` — `std_msgs/msg/Bool`
+
+---
 
 ## 4. Services
 
-The system uses the following services:
+- `/turtleX/set_pen` — `turtlesim/srv/SetPen`
+- `/turtleX/teleport_absolute` — `turtlesim/srv/TeleportAbsolute`
 
-- `/turtleX/set_pen` (`turtlesim/srv/SetPen`)
-- `/turtleX/teleport_absolute` (`turtlesim/srv/TeleportAbsolute`)
+These allow pen color control and absolute teleportation.
 
-These services allow pen color switching, pen on/off control, and absolute teleportation.
+---
 
-## 5. Behaviour Summary
+## 5. Behavior Summary
 
-- User-issued velocity commands run for exactly one second.
-- If a collision occurs:
-  - Input is frozen.
-  - Both turtles are stopped.
-  - Pen colors change to red.
-  - After a short delay, pens are disabled.
-  - Turtles are teleported to the last valid pose.
-  - Pens return to blue and input is re-enabled.
-- The UI informs the user when commands are blocked or unblocked.
+- User velocity commands execute for exactly one second.  
+- On any collision:  
+  - Input freezes  
+  - Turtles stop  
+  - Pen switches to red  
+  - After 400 ms, pen is disabled  
+  - Turtles teleport to the last valid pose  
+  - Pen switches back to blue  
+  - Input is re-enabled  
+
+---
 
 ## 6. Requirements
 
 - ROS2 Jazzy (or compatible)
-- turtlesim package installed
-- C++17 or later
-- Terminal supporting ANSI escape sequences
+- `turtlesim` package installed
+- Terminal with ANSI escape sequence support
 
-## 7. Running the Project
+---
+
+## 7. Running the Project Manually
 
 Terminal 1:
 ```
@@ -135,17 +147,49 @@ Terminal 3:
 ros2 run assignment1_rt ui_node
 ```
 
-## 8. Notes on Implementation Style
+---
 
-The codebase follows modern C++ practices:
+## 8. Running the Project via Shell Scripts (Recommended)
 
-- Namespaces replaced with short, clear aliases
-- Separation of responsibilities between nodes
-- Clean structure and readability-focused layout
-- Minimal use of fully qualified ROS types
-- ANSI-enhanced console readability
+Two shell scripts are included to automate execution.
+
+### 8.1 `launcher.sh` — Main Entry Point
+
+`launcher.sh` provides:
+
+- An interactive ASCII-based menu  
+- Options to start, restart, cancel, or quit  
+- Automatic invocation of `run_assignment.sh`  
+- No need to manually run backend scripts  
+
+Run with:
+```
+chmod +x launcher.sh
+./launcher.sh
+```
+
+### 8.2 `run_assignment.sh` — Backend Execution Layer
+
+Automatically invoked by `launcher.sh`.  
+It:
+
+- Creates a `tmux` session  
+- Builds a 2×2 tiled layout  
+- Launches:  
+  - `turtlesim_node`  
+  - Spawn of second turtle  
+  - `distance_node`  
+  - `ui_node`  
+
+Experts may run it directly, though this is unnecessary:
+
+```
+chmod +x run_assignment.sh
+./run_assignment.sh
+```
+
+---
 
 ## 9. License
 
-This project is distributed under the MIT License.
-
+Distributed under the MIT License.
