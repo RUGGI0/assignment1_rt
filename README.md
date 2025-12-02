@@ -189,16 +189,18 @@ The launchers provide to:
 Run them with:
 
 ```bash
-chmod +x launcher_cpp.sh launcher_py.sh
-./launcher_cpp.sh
+cd ~/ros2_workshop/src/assignment1_rt_cpp
+chmod +x run_assignment.sh
+chmod +x launcher.sh
+./launcher.sh
 ```
-
-or:
-
+or
 ```bash
-./launcher_py.sh
+cd ~/ros2_workshop/src/assignment1_rt_py
+chmod +x run_assignment.sh
+chmod +x launcher.sh
+./launcher.sh
 ```
-
 ---
 
 # 7. Terminal Requirements for Script Execution
