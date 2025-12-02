@@ -1,4 +1,4 @@
-# ROS2 Assignment: Multi-Turtle Control and Collision Management  
+# RT Assignment: Multi-Turtle Control and Collision Management  
 ### (C++ and Python Implementations)
 
 This project implements a coordinated control system for two *Turtlesim* agents in ROS2.  
@@ -170,14 +170,14 @@ ros2 run assignment1_rt_py ui_node
 
 ---
 
-# 6. Running the Project with Scripts
+# 6. Running the Project with Scripts (aka: the very cool way)
 
 Two automation scripts are provided:
 
-- `launcher_cpp.sh` — C++ version  
-- `launcher_py.sh` — Python version  
+- `launcher.sh` (available in both version) 
+- `run_assignment.sh` (available in both version)  
 
-They automatically:
+The launchers provide to:
 
 - Start a `tmux` 2×2 session  
 - Launch turtlesim  
