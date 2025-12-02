@@ -1,194 +1,241 @@
-# ROS2 Assignment: Multi-Turtle Control and Collision Management
+# ROS2 Assignment: Multi-Turtle Control and Collision Management  
+### (C++ and Python Implementations)
 
-This project implements a coordinated control system for two Turtlesim agents in ROS2.  
-The system is composed of two custom nodes:
+This project implements a coordinated control system for two *Turtlesim* agents in ROS2.  
+It includes both **C++** and **Python** versions of the assignment, each providing the same functionality but implemented in different languages.
 
-1. `distance_node`: Supervisory logic responsible for collision detection, freeze control, teleportation, and pen management.  
-2. `ui_node`: Command-line user interface for velocity input and manual turtle control.
+The system uses two custom nodes:
 
-Both nodes communicate through topics and services to ensure safe navigation and consistent behavior during collisions.
+1. **distance_node** – Supervisory logic responsible for collision detection, freeze control, teleportation, and pen management.  
+2. **ui_node** – A command-line user interface that allows manual control of either turtle for timed velocity commands.
+
+Both nodes communicate using ROS topics and services to ensure safe movement, predictable behaviour in collisions, and responsive control.
 
 ---
 
-## 1. System Architecture
+# 1. System Architecture
 
-The ASCII diagram below represents nodes, topics, services, and data flow:
+Below is a simplified ASCII architecture diagram showing all nodes, topics, and services:
 
 ```
-                           +---------------------------+
-                           |         ui_node           |
-                           |  (User Command Interface) |
-                           +---------------------------+
-                                   |         |
-                     publishes     |         |    publishes
-                     /turtle1/cmd_vel        /turtle2/cmd_vel
-                                   |         |
-                                   v         v
-                     +-----------------+   +-----------------+
-                     |   turtle1       |   |    turtle2      |
-                     |  (turtlesim)    |   |   (turtlesim)   |
-                     +-----------------+   +-----------------+
-                             |                      |
-                       publishes               publishes
-                       /turtle1/pose           /turtle2/pose
-                             |                      |
-                             v                      v
-                    +---------------------------------------+
-                    |             distance_node             |
-                    |    (Collision and Safety Manager)     |
-                    +---------------------------------------+
-                             |                      |
-            calls SetPenSrv/TeleportSrv     calls SetPenSrv/TeleportSrv
-                             |                      |
-                             v                      v
-                     +------------------+   +------------------+
-                     |  turtle1 Pen/TP  |   | turtle2 Pen/TP   |
-                     +------------------+   +------------------+
+                               +---------------------------+
+                               |          ui_node          |
+                               |   (User Command Input)    |
+                               +---------------------------+
+                                       |         |
+                publishes /turtle1/cmd_vel      publishes /turtle2/cmd_vel
+                                       |         |
+                                       v         v
+                         +-----------------+   +-----------------+
+                         |    turtle1      |   |     turtle2     |
+                         |   (turtlesim)   |   |    (turtlesim)  |
+                         +-----------------+   +-----------------+
+                                 |                     |
+                           publishes                publishes
+                           /turtle1/pose           /turtle2/pose
+                                 |                     |
+                                 +----------+----------+
+                                            |
+                                            v
+                               +---------------------------+
+                               |       distance_node       |
+                               | (Collision & Safety Mgr.) |
+                               +---------------------------+
+                                 |                     |
+                    calls SetPen/Teleport     calls SetPen/Teleport
+                                 |                     |
+                                 v                     v
+                           +----------+         +-------------+
+                           | turtle1  |         |  turtle2    |
+                           | pen/tp   |         |   pen/tp    |
+                           +----------+         +-------------+
 
-                    distance_node publishes /freeze_turtles
-                                   |
-                                   v
-                           +----------------+
-                           |    ui_node     |
-                           |  (Freeze Ctrl) |
-                           +----------------+
+                               publishes /freeze_turtles
+                                            |
+                                            v
+                                   +----------------+
+                                   |    ui_node     |
+                                   | (Freeze Ctrl)  |
+                                   +----------------+
 ```
 
 ---
 
-## 2. Node Descriptions
+# 2. Node Descriptions
 
-### 2.1 `distance_node`
+## 2.1 `distance_node`
+The **supervisory control node**, responsible for:
 
-`distance_node` functions as the supervisory controller. It performs:
+- Subscribing to `/turtle1/pose` and `/turtle2/pose`
+- Detecting turtle–turtle and turtle–wall collisions
+- Publishing `/freeze_turtles` to temporarily block user input
+- Stopping turtles when needed
+- Changing pen colors during collisions
+- Teleporting turtles back to the last valid pose
+- Managing `SetPen` and `TeleportAbsolute` service clients
+- Executing a periodic update loop (50 ms)
+- Printing a colored version label at startup
 
-- Subscription to `/turtle1/pose` and `/turtle2/pose`
-- Turtle–turtle and turtle–wall collision detection
-- Publication of `/freeze_turtles` to temporarily block UI input
-- Automatic pen color switching on collisions
-- Teleportation to the last safe pose
-- Management of SetPen and Teleport service clients
-- Timer-driven update loop running at 20 Hz
-- ANSI-colored initialization message
+## 2.2 `ui_node`
+A **terminal-based user interface**, offering:
 
----
-
-### 2.2 `ui_node`
-
-`ui_node` provides a synchronous terminal-based interface. It handles:
-
-- Selection between turtle1 and turtle2  
-- Input of linear and angular velocities  
-- Execution of commands for exactly 1 second  
-- Freeze behavior governed by `/freeze_turtles`  
-- ANSI-colored user prompts and system messages  
+- Selection of which turtle to control
+- Input of linear and angular velocities
+- 1-second timed execution of commands
+- Automatic blocking when `/freeze_turtles` is active
+- Colored user prompts and status messages
+- Publishing velocity commands for each turtle
 
 ---
 
-## 3. Topics
+# 3. ROS Interfaces
 
-### Publishers
-- `/turtle1/cmd_vel` — `geometry_msgs/msg/Twist`
-- `/turtle2/cmd_vel` — `geometry_msgs/msg/Twist`
-- `/freeze_turtles` — `std_msgs/msg/Bool`
+## 3.1 Topics
 
-### Subscribers
-- `/turtle1/pose` — `turtlesim/msg/Pose`
-- `/turtle2/pose` — `turtlesim/msg/Pose`
-- `/freeze_turtles` — `std_msgs/msg/Bool`
+### **Publishers**
+- `/turtle1/cmd_vel` — `geometry_msgs/msg/Twist`  
+- `/turtle2/cmd_vel` — `geometry_msgs/msg/Twist`  
+- `/freeze_turtles` — `std_msgs/msg/Bool`  
 
----
+### **Subscribers**
+- `/turtle1/pose` — `turtlesim/msg/Pose`  
+- `/turtle2/pose` — `turtlesim/msg/Pose`  
+- `/freeze_turtles` — `std_msgs/msg/Bool`  
 
-## 4. Services
+## 3.2 Services
+Used internally for pen manipulation and teleportation:
 
-- `/turtleX/set_pen` — `turtlesim/srv/SetPen`
-- `/turtleX/teleport_absolute` — `turtlesim/srv/TeleportAbsolute`
-
-These allow pen color control and absolute teleportation.
-
----
-
-## 5. Behavior Summary
-
-- User velocity commands execute for exactly one second.  
-- On any collision:  
-  - Input freezes  
-  - Turtles stop  
-  - Pen switches to red  
-  - After 400 ms, pen is disabled  
-  - Turtles teleport to the last valid pose  
-  - Pen switches back to blue  
-  - Input is re-enabled  
+- `/turtleX/set_pen` — `turtlesim/srv/SetPen`  
+- `/turtleX/teleport_absolute` — `turtlesim/srv/TeleportAbsolute`  
 
 ---
 
-## 6. Requirements
+# 4. Behaviour Overview
 
-- ROS2 Jazzy (or compatible)
-- `turtlesim` package installed
-- Terminal with ANSI escape sequence support
+- User velocity commands run for **exactly 1 second**.  
+- During a collision:  
+  - Input is blocked via `/freeze_turtles`.  
+  - Both turtles are stopped.  
+  - Pen color temporarily becomes red.  
+  - After a short delay, pens turn off.  
+  - Turtles are teleported to the last valid pose.  
+  - Pens return to blue.  
+  - Input is unblocked again.  
 
 ---
 
-## 7. Running the Project Manually
+# 5. Running the Project Manually
 
-Terminal 1:
-```
+## 5.1 Start Turtlesim  
+Open **Terminal 1**:
+
+```bash
+source install/setup.bash
 ros2 run turtlesim turtlesim_node
 ```
 
-Terminal 2:
-```
-ros2 run assignment1_rt distance_node
-```
+## 5.2 Spawn Turtle2  
+Open **Terminal 2**:
 
-Terminal 3:
-```
-ros2 run assignment1_rt ui_node
+```bash
+source install/setup.bash
+ros2 service call /spawn turtlesim/srv/Spawn   "{x: 2.0, y: 2.0, theta: 0.0, name: 'turtle2'}"
 ```
 
----
+## 5.3 Start C++ Nodes  
+Open **Terminal 3**:
 
-## 8. Running the Project via Shell Scripts (Recommended)
-
-Two shell scripts are included to automate execution.
-
-### 8.1 `launcher.sh`
-
-`launcher.sh` provides:
-- An interactive ASCII-based menu  
-- Options to start, restart, cancel, or quit  
-- Automatic invocation of `run_assignment.sh`  
-- No need to manually run backend scripts  
-
-Run with:
-```
-chmod +x launcher.sh
-./launcher.sh
+```bash
+ros2 run assignment1_rt_cpp distance_node
 ```
 
-### 8.2 `run_assignment.sh`
+Open **Terminal 4**:
 
-Automatically invoked by `launcher.sh`.  
-
-It:
-- Creates a `tmux` session  
-- Builds a 2×2 tiled layout  
-- Launches:  
-  - `turtlesim_node`  
-  - Spawn of second turtle  
-  - `distance_node`  
-  - `ui_node`  
-
-Experts may run it directly, though this is unnecessary:
-
+```bash
+ros2 run assignment1_rt_cpp ui_node
 ```
-chmod +x run_assignment.sh
-./run_assignment.sh
+
+## 5.4 Start Python Nodes  
+Instead of the C++ commands above, run:
+
+**Distance node:**
+```bash
+ros2 run assignment1_rt_py distance_node
+```
+
+**UI node:**
+```bash
+ros2 run assignment1_rt_py ui_node
 ```
 
 ---
 
-## 9. License
+# 6. Running the Project with Scripts
 
-Distributed under the MIT License.
+Two automation scripts are provided:
+
+- `launcher_cpp.sh` — C++ version  
+- `launcher_py.sh` — Python version  
+
+They automatically:
+
+- Start a `tmux` 2×2 session  
+- Launch turtlesim  
+- Spawn turtle2  
+- Start both nodes  
+- Handle workspace sourcing  
+- Cleanly restart the environment  
+
+Run them with:
+
+```bash
+chmod +x launcher_cpp.sh launcher_py.sh
+./launcher_cpp.sh
+```
+
+or:
+
+```bash
+./launcher_py.sh
+```
+
+---
+
+# 7. Terminal Requirements for Script Execution
+
+The launch scripts rely on:
+
+```
+x-terminal-emulator
+```
+
+This ensures compatibility with terminals like GNOME Terminal, XTerm, etc.
+
+Check if it exists:
+
+```bash
+which x-terminal-emulator
+```
+
+If missing, install or configure it:
+
+```bash
+sudo update-alternatives --config x-terminal-emulator
+```
+
+---
+
+# 8. Package Names
+
+This project contains two ROS2 packages:
+
+- **assignment1_rt_cpp** — C++ implementation  
+- **assignment1_rt_py** — Python implementation  
+
+Each contains its own `distance_node` and `ui_node`.
+
+---
+
+# 9. License
+
+Distributed under the **MIT License**.
