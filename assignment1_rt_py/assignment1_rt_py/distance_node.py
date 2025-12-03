@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 import math
 import time
 
@@ -12,15 +11,19 @@ from std_msgs.msg import Bool
 
 from turtlesim.srv import SetPen, TeleportAbsolute
 
-# ANSI colors
+# ANSI
 Y = "\033[33m"
 R = "\033[0m"
 
 # ================================
 # CONFIG
 # ================================
-COLLISION_DISTANCE = 1.5
-WALL_THRESHOLD = 1.5
+PRECOLLISION_DISTANCE = 1.5
+COLLISION_DISTANCE = 0.5
+
+WALL_THRESHOLD_MIN = 0.5
+WALL_THRESHOLD_MAX = 10.5
+
 SLEEP_AFTER_COLLISION = 0.4  # seconds
 
 
@@ -29,11 +32,9 @@ class DistanceNode(Node):
     def __init__(self):
         super().__init__("distance_node")
 
-        self.get_logger().info(f"{Y}distance_node 1.0 loaded{Y}")
+        self.get_logger().info(f"{Y}distance_node 2.3 patched (micro-move) loaded{R}")
 
-        # -----------------------------
-        # Internal state
-        # -----------------------------
+        # Internal
         self.pose1 = None
         self.pose2 = None
 
@@ -43,40 +44,30 @@ class DistanceNode(Node):
         self.init1 = False
         self.init2 = False
 
-        # -----------------------------
-        # Subscribers
-        # -----------------------------
-        self.create_subscription(Pose, "/turtle1/pose",
-                                 self.pose1_callback, 10)
-        self.create_subscription(Pose, "/turtle2/pose",
-                                 self.pose2_callback, 10)
+        self.pre1_active = False
+        self.pre2_active = False
 
-        # -----------------------------
+        # Subscribers
+        self.create_subscription(Pose, "/turtle1/pose", self.pose1_callback, 10)
+        self.create_subscription(Pose, "/turtle2/pose", self.pose2_callback, 10)
+
         # Publishers
-        # -----------------------------
         self.pub1 = self.create_publisher(Twist, "/turtle1/cmd_vel", 10)
         self.pub2 = self.create_publisher(Twist, "/turtle2/cmd_vel", 10)
         self.freeze_pub = self.create_publisher(Bool, "/freeze_turtles", 10)
 
-        # -----------------------------
-        # Service Clients
-        # -----------------------------
+        # Services
         self.pen1 = self.create_client(SetPen, "/turtle1/set_pen")
         self.pen2 = self.create_client(SetPen, "/turtle2/set_pen")
-        self.tp1 = self.create_client(TeleportAbsolute,
-                                      "/turtle1/teleport_absolute")
-        self.tp2 = self.create_client(TeleportAbsolute,
-                                      "/turtle2/teleport_absolute")
+        self.tp1 = self.create_client(TeleportAbsolute, "/turtle1/teleport_absolute")
+        self.tp2 = self.create_client(TeleportAbsolute, "/turtle2/teleport_absolute")
 
-        # -----------------------------
         # Timer
-        # -----------------------------
         self.create_timer(0.05, self.update)
 
-    # =====================================================
-    # UTILITY FUNCTIONS
-    # =====================================================
-
+    # -----------------------------
+    # Utility
+    # -----------------------------
     def freeze(self, state: bool):
         msg = Bool()
         msg.data = state
@@ -84,24 +75,22 @@ class DistanceNode(Node):
 
     def stop_turtle(self, pub):
         msg = Twist()
+        msg.linear.x = 0.0
+        msg.angular.z = 0.0
         pub.publish(msg)
 
     def set_pen(self, client, r, g, b, w, off):
         if not client.wait_for_service(timeout_sec=0.1):
             return
-
         req = SetPen.Request()
-        req.r = r
-        req.g = g
-        req.b = b
+        req.r, req.g, req.b = r, g, b
         req.width = w
         req.off = 1 if off else 0
         client.call_async(req)
 
     def teleport(self, client, pose):
-        if not client.wait_for_service(timeout_sec=0.1):
+        if pose is None or not client.wait_for_service(timeout_sec=0.1):
             return
-
         req = TeleportAbsolute.Request()
         req.x = pose.x
         req.y = pose.y
@@ -109,128 +98,147 @@ class DistanceNode(Node):
         client.call_async(req)
 
     @staticmethod
-    def near_wall(p):
+    def near_wall(p: Pose):
         return (
-            p.x < WALL_THRESHOLD
-            or p.x > 10.0 - WALL_THRESHOLD
-            or p.y < WALL_THRESHOLD
-            or p.y > 10.0 - WALL_THRESHOLD
+            p.x < WALL_THRESHOLD_MIN
+            or p.x > WALL_THRESHOLD_MAX
+            or p.y < WALL_THRESHOLD_MIN
+            or p.y > WALL_THRESHOLD_MAX
         )
 
-    # =====================================================
-    # SUBSCRIBER CALLBACKS
-    # =====================================================
-
-    def pose1_callback(self, msg: Pose):
+    # -----------------------------
+    # Pose callbacks
+    # -----------------------------
+    def pose1_callback(self, msg):
         self.pose1 = msg
         if not self.init1:
             self.init1 = True
             self.last_stop1 = msg
             self.set_pen(self.pen1, 0, 0, 255, 3, False)
-
-        if msg.linear_velocity == 0 and msg.angular_velocity == 0:
+        if msg.linear_velocity == 0.0 and msg.angular_velocity == 0.0:
             self.last_stop1 = msg
 
-    def pose2_callback(self, msg: Pose):
+    def pose2_callback(self, msg):
         self.pose2 = msg
         if not self.init2:
             self.init2 = True
             self.last_stop2 = msg
             self.set_pen(self.pen2, 0, 0, 255, 3, False)
-
-        if msg.linear_velocity == 0 and msg.angular_velocity == 0:
+        if msg.linear_velocity == 0.0 and msg.angular_velocity == 0.0:
             self.last_stop2 = msg
 
-    # =====================================================
-    # MAIN LOOP
-    # =====================================================
-
+    # -----------------------------
+    # Main loop
+    # -----------------------------
     def update(self):
         if self.pose1 is None or self.pose2 is None:
             return
 
-        # --------------------------------
-        # TURTLE–TURTLE COLLISION
-        # --------------------------------
         dx = self.pose1.x - self.pose2.x
         dy = self.pose1.y - self.pose2.y
         dist = math.sqrt(dx * dx + dy * dy)
 
+        # Pre-collision pen logic
+        self.handle_pre_collision(dist)
+
+        # Collision
         if dist < COLLISION_DISTANCE:
-            self.handle_collision("turtles", both=True)
+            self.handle_collision(both=True)
             return
 
-        # --------------------------------
-        # WALL COLLISIONS
-        # --------------------------------
+        # Wall collisions
         if self.near_wall(self.pose1):
-            self.handle_collision("turtle1 wall", t1=True)
+            self.handle_collision(t1=True)
+            return
 
         if self.near_wall(self.pose2):
-            self.handle_collision("turtle2 wall", t2=True)
+            self.handle_collision(t2=True)
+            return
 
-    # =====================================================
-    # COLLISION HANDLING
-    # =====================================================
+    # -----------------------------
+    # Pre-collision (pen red)
+    # -----------------------------
+    def handle_pre_collision(self, dist):
+        in_pre = dist < PRECOLLISION_DISTANCE
 
-    def handle_collision(self, msg, both=False, t1=False, t2=False):
-        self.get_logger().error(f"[COLLISION] {msg}")
+        if in_pre and not self.pre1_active:
+            self.set_pen(self.pen1, 255, 0, 0, 3, False)
+            self.pre1_active = True
+        if not in_pre and self.pre1_active:
+            self.set_pen(self.pen1, 0, 0, 255, 3, False)
+            self.pre1_active = False
 
+        if in_pre and not self.pre2_active:
+            self.set_pen(self.pen2, 255, 0, 0, 3, False)
+            self.pre2_active = True
+        if not in_pre and self.pre2_active:
+            self.set_pen(self.pen2, 0, 0, 255, 3, False)
+            self.pre2_active = False
+
+    # -----------------------------
+    # Collision handling (patched)
+    # -----------------------------
+    def handle_collision(self, both=False, t1=False, t2=False):
         self.freeze(True)
 
-        # Stop turtles
-        if both or t1:
+        # Select turtles
+        use1 = both or t1
+        use2 = both or t2
+
+        # Micro movement message
+        micro = Twist()
+        micro.linear.x = 1.5
+        micro.angular.z = 0.0
+
+        # 1. Activate red pen + micro-move
+        if use1:
+            self.set_pen(self.pen1, 255, 0, 0, 4, False)
+            self.pub1.publish(micro)
+        if use2:
+            self.set_pen(self.pen2, 255, 0, 0, 4, False)
+            self.pub2.publish(micro)
+
+        time.sleep(0.12)  # controls minimal dash length
+
+        # 2. Stop & disable pen
+        if use1:
             self.stop_turtle(self.pub1)
-        if both or t2:
+            self.set_pen(self.pen1, 0, 0, 0, 4, True)
+
+        if use2:
             self.stop_turtle(self.pub2)
+            self.set_pen(self.pen2, 0, 0, 0, 4, True)
 
-        # Flash red
-        if both or t1:
-            self.set_pen(self.pen1, 255, 0, 0, 3, False)
-        if both or t2:
-            self.set_pen(self.pen2, 255, 0, 0, 3, False)
-
-        time.sleep(SLEEP_AFTER_COLLISION)
-
-        # Disable pen
-        if both or t1:
-            self.set_pen(self.pen1, 0, 0, 0, 3, True)
-        if both or t2:
-            self.set_pen(self.pen2, 0, 0, 0, 3, True)
-
-        # Teleport
-        if both or t1:
+        # 3. Teleport
+        if use1:
             self.teleport(self.tp1, self.last_stop1)
-        if both or t2:
+        if use2:
             self.teleport(self.tp2, self.last_stop2)
 
         time.sleep(0.05)
 
-        # Re-enable blue pen
-        if both or t1:
+        # 4. Restore blue
+        if use1:
             self.set_pen(self.pen1, 0, 0, 255, 3, False)
-        if both or t2:
+        if use2:
             self.set_pen(self.pen2, 0, 0, 255, 3, False)
-
-        # Stop again to avoid drift
-        if both or t1:
-            self.stop_turtle(self.pub1)
-        if both or t2:
-            self.stop_turtle(self.pub2)
 
         self.freeze(False)
 
 
-# =====================================================
-# MAIN
-# =====================================================
+# -----------------------------
+# Main
+# -----------------------------
 def main(args=None):
     rclpy.init(args=args)
     node = DistanceNode()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    try:
+        rclpy.spin(node)
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == "__main__":
     main()
+

@@ -56,13 +56,13 @@ tmux send-keys "bash" C-m
 tmux select-pane -t $SESSION:0.2
 tmux send-keys "cd $WORKSPACE" C-m
 tmux send-keys "source install/setup.bash" C-m
-tmux send-keys "ros2 run assignment1_rt distance_node" C-m
+tmux send-keys "ros2 run assignment1_rt_cpp distance_node" C-m
 
 ### Pane 4 (basso-destra): ui_node
 tmux select-pane -t $SESSION:0.3
 tmux send-keys "cd $WORKSPACE" C-m
 tmux send-keys "source install/setup.bash" C-m
-tmux send-keys "ros2 run assignment1_rt ui_node" C-m
+tmux send-keys "ros2 run assignment1_rt_cpp ui_node" C-m
 
 #######################################
 # Entra nella sessione

@@ -12,7 +12,16 @@
 #include <functional>
 
 // -------------------------
-// Standard Library aliases
+// CONFIG
+// -------------------------
+static const float PRECOLLISION_DISTANCE = 1.5f;
+static const float COLLISION_DISTANCE   = 0.5f;
+
+static const float WALL_MIN = 0.5f;
+static const float WALL_MAX = 10.5f;
+
+static const int COLLISION_SLEEP_MS = 400;
+
 // -------------------------
 using std::string;
 using std::bind;
@@ -20,49 +29,36 @@ using std::placeholders::_1;
 using std::sqrt;
 using std::chrono::milliseconds;
 
-
-// -------------------------
-// ROS2 Type Aliases
-// -------------------------
 using rclcpp::Node;
 using rclcpp::sleep_for;
 using rclcpp::init;
 using rclcpp::spin;
 using rclcpp::shutdown;
 
-// -------------------------
-// Generic Aliases
-// -------------------------
-template<typename T>
-using Sub = rclcpp::Subscription<T>;
-
-template<typename T>
-using Pub = rclcpp::Publisher<T>;
-
+template<typename T> using Sub = rclcpp::Subscription<T>;
+template<typename T> using Pub = rclcpp::Publisher<T>;
 using Timer = rclcpp::TimerBase;
 
-using Pose           = turtlesim::msg::Pose;
-using Twist          = geometry_msgs::msg::Twist;
-using BoolMsg        = std_msgs::msg::Bool;
+using Pose = turtlesim::msg::Pose;
+using Twist = geometry_msgs::msg::Twist;
+using BoolMsg = std_msgs::msg::Bool;
 
-using SetPenSrv      = turtlesim::srv::SetPen;
-using TeleportSrv    = turtlesim::srv::TeleportAbsolute;
+using SetPenSrv = turtlesim::srv::SetPen;
+using TeleportSrv = turtlesim::srv::TeleportAbsolute;
 
-using ClientSetPen   = rclcpp::Client<SetPenSrv>;
+using ClientSetPen = rclcpp::Client<SetPenSrv>;
 using ClientTeleport = rclcpp::Client<TeleportSrv>;
 
-using SetPenReq      = SetPenSrv::Request;
-using TeleportReq    = TeleportSrv::Request;
+using SetPenReq = SetPenSrv::Request;
+using TeleportReq = TeleportSrv::Request;
 
-// -------------------------
 // ANSI Colors
-// -------------------------
 static const string Y = "\033[33m";
 static const string R = "\033[0m";
 
 
 // =====================================================
-// CLASS NODE
+// NODE
 // =====================================================
 class DistanceNode : public Node
 {
@@ -71,83 +67,57 @@ public:
     {
         RCLCPP_INFO(
             this->get_logger(),
-            "%sdistance_node v4.3 loaded%s",
+            "%sdistance_node v5.1 loaded%s",
             Y.c_str(), R.c_str()
         );
 
-        // -------------------------
-        // Subscribers
-        // -------------------------
         sub1_ = create_subscription<Pose>(
             "/turtle1/pose", 10,
-            bind(&DistanceNode::pose1Callback, this, _1)
-        );
+            bind(&DistanceNode::pose1Callback, this, _1));
 
         sub2_ = create_subscription<Pose>(
             "/turtle2/pose", 10,
-            bind(&DistanceNode::pose2Callback, this, _1)
-        );
+            bind(&DistanceNode::pose2Callback, this, _1));
 
-        // -------------------------
-        // Publishers
-        // -------------------------
         pub1_ = create_publisher<Twist>("/turtle1/cmd_vel", 10);
         pub2_ = create_publisher<Twist>("/turtle2/cmd_vel", 10);
-
         freeze_pub_ = create_publisher<BoolMsg>("/freeze_turtles", 10);
 
-        // -------------------------
-        // Service Clients
-        // -------------------------
         pen1_client_ = create_client<SetPenSrv>("/turtle1/set_pen");
         pen2_client_ = create_client<SetPenSrv>("/turtle2/set_pen");
-        tp1_client_  = create_client<TeleportSrv>("/turtle1/teleport_absolute");
-        tp2_client_  = create_client<TeleportSrv>("/turtle2/teleport_absolute");
 
-        // -------------------------
-        // Timer
-        // -------------------------
+        tp1_client_ = create_client<TeleportSrv>("/turtle1/teleport_absolute");
+        tp2_client_ = create_client<TeleportSrv>("/turtle2/teleport_absolute");
+
         timer_ = create_wall_timer(
             milliseconds(50),
-            bind(&DistanceNode::update, this)
-        );
+            bind(&DistanceNode::update, this));
     }
 
 private:
 
-    // =====================================================
-    // FREEZE CONTROL
-    // =====================================================
-    void setFreeze(bool state)
+    void setFreeze(bool s)
     {
         BoolMsg msg;
-        msg.data = state;
+        msg.data = s;
         freeze_pub_->publish(msg);
     }
 
-
-    // =====================================================
-    // UTILITIES
-    // =====================================================
     void setPen(const ClientSetPen::SharedPtr &client,
-                int r, int g, int b,
-                int width, bool off)
+                int r, int g, int b, int w, bool off)
     {
         if (!client->wait_for_service(milliseconds(100)))
             return;
 
         auto req = std::make_shared<SetPenReq>();
-        req->r = r;
-        req->g = g;
-        req->b = b;
-        req->width = width;
+        req->r = r; req->g = g; req->b = b;
+        req->width = w;
         req->off = off ? 1 : 0;
 
         client->async_send_request(req);
     }
 
-    void teleport(const ClientTeleport::SharedPtr &client,
-                  const Pose &p)
+    void teleport(const ClientTeleport::SharedPtr &client, const Pose &p)
     {
         if (!client->wait_for_service(milliseconds(100)))
             return;
@@ -163,17 +133,16 @@ private:
     void stopTurtle(const Pub<Twist>::SharedPtr &pub)
     {
         Twist msg;
-        msg.linear.x = 0;
+        msg.linear.x  = 0;
         msg.angular.z = 0;
         pub->publish(msg);
     }
 
     bool isNearWall(const Pose &p)
     {
-        return (p.x < 1.0 || p.x > 9.5 ||
-                p.y < 1.0 || p.y > 9.5);
+        return (p.x < WALL_MIN || p.x > WALL_MAX ||
+                p.y < WALL_MIN || p.y > WALL_MAX);
     }
-
 
     // =====================================================
     // CALLBACKS
@@ -188,6 +157,9 @@ private:
             init1_ = true;
             setPen(pen1_client_, 0, 0, 255, 3, false);
         }
+
+        if (p.linear_velocity == 0 && p.angular_velocity == 0)
+            last_stop1_ = p;
     }
 
     void pose2Callback(const Pose &p)
@@ -200,8 +172,10 @@ private:
             init2_ = true;
             setPen(pen2_client_, 0, 0, 255, 3, false);
         }
-    }
 
+        if (p.linear_velocity == 0 && p.angular_velocity == 0)
+            last_stop2_ = p;
+    }
 
     // =====================================================
     // MAIN LOOP
@@ -211,135 +185,120 @@ private:
         if (!pose1_ready_ || !pose2_ready_)
             return;
 
-        // Save stop positions
-        if (pose1_.linear_velocity == 0 && pose1_.angular_velocity == 0)
-            last_stop1_ = pose1_;
+        float dx   = pose1_.x - pose2_.x;
+        float dy   = pose1_.y - pose2_.y;
+        float dist = sqrt(dx * dx + dy * dy);
 
-        if (pose2_.linear_velocity == 0 && pose2_.angular_velocity == 0)
-            last_stop2_ = pose2_;
+        handlePreCollision(dist);
 
-
-        // -------------------------
-        // Turtle–turtle collision
-        // -------------------------
-        float dx = pose1_.x - pose2_.x;
-        float dy = pose1_.y - pose2_.y;
-
-        if (sqrt(dx * dx + dy * dy) < 1.0)
-        {
-            RCLCPP_ERROR(this->get_logger(), "[COLLISION] turtles");
-
-            setFreeze(true);
-            stopTurtle(pub1_);
-            stopTurtle(pub2_);
-
-            setPen(pen1_client_, 255, 0, 0, 3, false);
-            setPen(pen2_client_, 255, 0, 0, 3, false);
-
-            sleep_for(milliseconds(400));
-
-            setPen(pen1_client_, 0, 0, 0, 3, true);
-            setPen(pen2_client_, 0, 0, 0, 3, true);
-
-            teleport(tp1_client_, last_stop1_);
-            teleport(tp2_client_, last_stop2_);
-
-            stopTurtle(pub1_);
-            stopTurtle(pub2_);
-
-            setPen(pen1_client_, 0, 0, 255, 3, false);
-            setPen(pen2_client_, 0, 0, 255, 3, false);
-
-            stopTurtle(pub1_);
-            stopTurtle(pub2_);
-
-            setFreeze(false);
+        if (dist < COLLISION_DISTANCE) {
+            handleCollision(true, true);
             return;
         }
 
-
-        // -------------------------
-        // Wall collision (turtle1)
-        // -------------------------
-        if (isNearWall(pose1_))
-        {
-            RCLCPP_ERROR(this->get_logger(), "[COLLISION] turtle1 wall");
-
-            setFreeze(true);
-            stopTurtle(pub1_);
-
-            setPen(pen1_client_, 255, 0, 0, 3, false);
-            sleep_for(milliseconds(400));
-
-            setPen(pen1_client_, 0, 0, 0, 3, true);
-            teleport(tp1_client_, last_stop1_);
-
-            stopTurtle(pub1_);
-            setPen(pen1_client_, 0, 0, 255, 3, false);
-            stopTurtle(pub1_);
-
-            setFreeze(false);
+        if (isNearWall(pose1_)) {
+            handleCollision(true, false);
             return;
         }
 
-
-        // -------------------------
-        // Wall collision (turtle2)
-        // -------------------------
-        if (isNearWall(pose2_))
-        {
-            RCLCPP_ERROR(this->get_logger(), "[COLLISION] turtle2 wall");
-
-            setFreeze(true);
-            stopTurtle(pub2_);
-
-            setPen(pen2_client_, 255, 0, 0, 3, false);
-            sleep_for(milliseconds(400));
-
-            setPen(pen2_client_, 0, 0, 0, 3, true);
-            teleport(tp2_client_, last_stop2_);
-
-            stopTurtle(pub2_);
-            setPen(pen2_client_, 0, 0, 255, 3, false);
-            stopTurtle(pub2_);
-
-            setFreeze(false);
+        if (isNearWall(pose2_)) {
+            handleCollision(false, true);
             return;
         }
     }
 
     // =====================================================
-    // MEMBER VARIABLES
+    // PRE COLLISION
+    // =====================================================
+    void handlePreCollision(float dist)
+    {
+        bool in_pre = (dist < PRECOLLISION_DISTANCE);
+
+        if (in_pre && !pre1_active_) {
+            setPen(pen1_client_, 255, 0, 0, 3, false);
+            pre1_active_ = true;
+        }
+        if (!in_pre && pre1_active_) {
+            setPen(pen1_client_, 0, 0, 255, 3, false);
+            pre1_active_ = false;
+        }
+
+        if (in_pre && !pre2_active_) {
+            setPen(pen2_client_, 255, 0, 0, 3, false);
+            pre2_active_ = true;
+        }
+        if (!in_pre && pre2_active_) {
+            setPen(pen2_client_, 0, 0, 255, 3, false);
+            pre2_active_ = false;
+        }
+    }
+
+    // =====================================================
+    // COLLISION (PATCHED WITH RED MICRO-MOVE)
+    // =====================================================
+    void handleCollision(bool t1, bool t2)
+    {
+        setFreeze(true);
+
+        // Micro-move twist
+        Twist micro;
+        micro.linear.x = 1.5;
+        micro.angular.z = 0.0;
+
+        // 1) Red pen + micro-move = guaranteed red dash
+        if (t1) setPen(pen1_client_, 255, 0, 0, 4, false);
+        if (t2) setPen(pen2_client_, 255, 0, 0, 4, false);
+
+        if (t1) pub1_->publish(micro);
+        if (t2) pub2_->publish(micro);
+
+        sleep_for(milliseconds(120)); // red dash duration
+
+        // 2) Stop movement and disable pen (no teleport streaks)
+        if (t1) stopTurtle(pub1_);
+        if (t2) stopTurtle(pub2_);
+
+        if (t1) setPen(pen1_client_, 0, 0, 0, 4, true);
+        if (t2) setPen(pen2_client_, 0, 0, 0, 4, true);
+
+        // 3) Teleport
+        if (t1) teleport(tp1_client_, last_stop1_);
+        if (t2) teleport(tp2_client_, last_stop2_);
+
+        sleep_for(milliseconds(50));
+
+        // 4) Restore blue
+        if (t1) setPen(pen1_client_, 0, 0, 255, 3, false);
+        if (t2) setPen(pen2_client_, 0, 0, 255, 3, false);
+
+        setFreeze(false);
+    }
+
+
+    // =====================================================
+    // VARIABLES
     // =====================================================
     Pose pose1_, pose2_;
     Pose last_stop1_, last_stop2_;
-    
+
     bool pose1_ready_ = false;
     bool pose2_ready_ = false;
     bool init1_ = false;
     bool init2_ = false;
-    
-    // Subscribers
-    Sub<Pose>::SharedPtr sub1_;
-    Sub<Pose>::SharedPtr sub2_;
-    
-    // Publishers
-    Pub<Twist>::SharedPtr    pub1_;
-    Pub<Twist>::SharedPtr    pub2_;
-    Pub<BoolMsg>::SharedPtr  freeze_pub_;
-    
-    // Service clients
-    ClientSetPen::SharedPtr    pen1_client_;
-    ClientSetPen::SharedPtr    pen2_client_;
-    ClientTeleport::SharedPtr  tp1_client_;
-    ClientTeleport::SharedPtr  tp2_client_;
-    
-    // Timer
+
+    bool pre1_active_ = false;
+    bool pre2_active_ = false;
+
+    Sub<Pose>::SharedPtr sub1_, sub2_;
+    Pub<Twist>::SharedPtr pub1_, pub2_;
+    Pub<BoolMsg>::SharedPtr freeze_pub_;
+
+    ClientSetPen::SharedPtr pen1_client_, pen2_client_;
+    ClientTeleport::SharedPtr tp1_client_, tp2_client_;
+
     Timer::SharedPtr timer_;
 };
 
-// =====================================================
-// MAIN
 // =====================================================
 int main(int argc, char **argv)
 {
@@ -348,3 +307,7 @@ int main(int argc, char **argv)
     shutdown();
     return 0;
 }
+
+
+
+
