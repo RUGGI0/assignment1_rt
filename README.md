@@ -124,7 +124,7 @@ Activated when the distance between the turtles is **below PRECOLLISION_DISTANCE
 During this phase:
 - The turtles keep moving normally.
 - Their pens turn **red**.
-- A **short red trail is drawn**, visually indicating an incoming collision.
+- A brief red trail is drawn, indicating that a collision is imminent.
 - If the turtles move apart again, pens return to **blue**.
 
 ## 3) Collision phase
@@ -190,12 +190,12 @@ ros2 run assignment1_rt_py ui_node
 
 # 6. Running the Project with Scripts (aka: the very cool way)
 
-Two automation scripts are provided:
+Two automation scripts are provided (for both implementations):
 
-- `launcher.sh` (available in both version) 
-- `run_assignment.sh` (available in both version)  
+- `launcher.sh`
+- `run_assignment.sh`
 
-The launchers provide to:
+The launchers will:
 
 - Start a `tmux` 2×2 session  
 - Launch turtlesim  
@@ -228,7 +228,7 @@ The launch scripts rely on:
 ```
 x-terminal-emulator
 ```
-This ensures compatibility with terminals like GNOME Terminal, XTerm, etc.
+This ensures compatibility with terminals like GNOME Terminal, XTerm, Terminator, etc.
 
 IT'S HIGLY SUGGESTED TO USE "[Terminator Terminal Emulator](https://gnome-terminator.org/)", WICH IS THE ONE PRE-INSTALLED ON UBUNTU MATE (DOCKER ENVIROMENT)
 
