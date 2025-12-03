@@ -254,9 +254,3 @@ This project contains two ROS2 packages:
 - **assignment1_rt_py** — Python implementation  
 
 Each contains its own `distance_node` and `ui_node`.
-
----
-
-# 9. License
-
-Distributed under the **MIT License**.
