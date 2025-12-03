@@ -112,15 +112,33 @@ Used internally for pen manipulation and teleportation:
 
 # 4. Behaviour Overview
 
-- User velocity commands run for **exactly 1 second**.  
-- During a collision:  
-  - Input is blocked via `/freeze_turtles`.  
-  - Both turtles are stopped.  
-  - Pen color temporarily becomes red.  
-  - After a short delay, pens turn off.  
-  - Turtles are teleported to the last valid pose.  
-  - Pens return to blue.  
-  - Input is unblocked again.  
+The system supports two phases before a collision:
+
+## 1) Normal motion
+- Pens are **blue**.
+- The user can send velocity commands freely.
+
+## 2) Pre-collision phase
+Activated when the distance between the turtles is **below PRECOLLISION_DISTANCE but above COLLISION_DISTANCE**.
+
+During this phase:
+- The turtles keep moving normally.
+- Their pens turn **red**.
+- A **short red trail is drawn**, visually indicating an incoming collision.
+- If the turtles move apart again, pens return to **blue**.
+
+## 3) Collision phase
+Triggered when:
+- The distance ≤ `COLLISION_DISTANCE`, or
+- A turtle approaches a wall (x or y outside `[0.5, 10.5]`)
+
+During a collision:
+- `/freeze_turtles` is set to **true**
+- Movement is blocked
+- Pens are turned **off**
+- Turtles are teleported back to their last safe stop position
+- Pens revert to **blue**
+- Input is restored (`/freeze_turtles = false`)
 
 ---
 
@@ -210,8 +228,9 @@ The launch scripts rely on:
 ```
 x-terminal-emulator
 ```
-
 This ensures compatibility with terminals like GNOME Terminal, XTerm, etc.
+
+IT'S HIGLY SUGGESTED TO USE "[Terminator Terminal Emulator](https://gnome-terminator.org/)", WICH IS THE ONE PRE-INSTALLED ON UBUNTU MATE (DOCKER ENVIROMENT)
 
 Check if it exists:
 
