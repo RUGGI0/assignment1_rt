@@ -9,7 +9,7 @@ The system uses two custom nodes:
 1. **distance_node** – Supervisory logic responsible for collision detection, freeze control, teleportation, and pen management.  
 2. **ui_node** – A command-line user interface that allows manual control of either turtle for timed velocity commands.
 
-Both nodes communicate using ROS topics and services to ensure safe movement, predictable behaviour in collisions, and responsive control.
+Both nodes communicate using ROS2 topics and services to ensure safe movement, predictable behaviour in collisions, and responsive control.
 
 ---
 
@@ -112,6 +112,9 @@ Used internally for pen manipulation and teleportation:
 
 # 4. Behaviour Overview
 
+| ![](/README_gif/drunken_turtles.gif) | ![](/README_gif/very_angry_turtles.gif) |
+|--------------------------------------|------------------------------------------|
+
 The system supports two phases before a collision:
 
 ## 1) Normal motion
@@ -189,6 +192,8 @@ ros2 run assignment1_rt_py ui_node
 ---
 
 # 6. Running the Project with Scripts (aka: the very cool way)
+
+![Scripts Behaviour](/README_gif/launcher_run.gif)
 
 Two automation scripts are provided (for both implementations):
 
